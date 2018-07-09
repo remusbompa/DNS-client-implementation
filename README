@@ -1,0 +1,123 @@
+/* BOMPA REMUS 325CB */
+Pentru operatii pe biti am creat functiile:
+- void set_bit(char* c,int pos)
+    -seteaza bitul de pe pozitia pos in byte-ul c (il face 1), indexarea bitilor facandu-se de la 0
+-void unset_bit(char *c,int pos)
+    -sterge bitul de pe pozitia pos in byte-ul c (il face 0), indexarea bitilor facandu-se de la 0
+-unsigned int get_bit(unsigned char c,int pos)
+    -afiseaza bitul de pe pozitia pos in byte-ul c
+Pentru a crea header-ul unui mesaj, am folosit functia:
+-void make_query(char*buffer,unsigned short id)
+    -primeste ca prim parametru inceputul unui buffer, unde se va construi mesajul (buffer) si ca al
+    doilea parametru, id-ul mesajului (primul camp, de 2 bytes, al mesajului de interogare) 
+    -seteaza primii 2 octeti cu valoarea lui id, opcode-ul cu 0 (standard query),aa,tc,ra,z,rcode cu
+    0 si rd cu 1, si qdcount,ancount,nscount,arcount cu 0 (urmeaza sa adaug interogarea si sa cresc
+    valoarea din octetii lui qdcount)
+Pentru a adauga o interogare mesajului, am folosit functia:
+-unsigned short add_question(char* buffer,char* domain_name,unsigned short type)
+    -primeste ca parametri: adresa de unde incepe mesajul (buffer), numele de domeniu (domain_name) si
+    tipul de inregistrare care ne intereseaza (type)
+    -incrementeaza campul care indica numarul de interogari ale mesajului:qdcount
+    -se memoreaza numele de domeniu domain_name in campul qname din buffer sub forma de secvente de 
+    label-uri, prin apelul functiei labelled_name(buffer,domain_name)
+    -se memoreaza in campul qtype al mesajului tipul type primit ca parametru
+    -se memoreaza in campul qclass al mesajului valoarea 1, definita de clasa IN (internet)
+    -functia intoarce numarul de bytes scrisi in mesaj (cu tot cu cei 12 octeti din header)
+-unsigned short labelled_name(char*buffer,char *domain_name)
+    -memoreaza la adresa primita ca prim parametru: buffer, numele de domeniu primit ca al doilea 
+    parametru: domain_name, sub forma de secventa de label-uri. Astfel, intr-o variabila len se
+    retine lungimea unui label (string aflat intre puncte), se parcurge domain_name octet cu 
+    octet iar daca octetul curent este '.' sau este sfarsitul stringului domain_name, se scrie
+    in buffer lungimea stringului si apoi string-ul, in caz contrar, se incrementeaza len. Variabila
+    bufi reprezinta numarul octetului din buffer la care s-a oprit scrierea.
+    -la finalul stringului, se pune in buffer 0 pentru a reprezenta domeniul radacina '.'
+    -functia intoarce numarul de octeti scrisi in buffer
+Pentru a scrie un mesaj trimis in fisierul message.log folosesc functia:
+-void write_message(char*buffer,char* end_buffer,FILE *file)
+    -primeste ca parametri pozitia de unde incepe mesajul: buffer si pozitia unde se termina mesajul:
+    end_buffer si scrie fiecare octet dintre aceste doua pozitii in fisierul file primit ca parametru
+    in formatul "%02x" (sub forma de 2 niblles)
+Pentru a afisa un raspuns de la server, se foleseste functia:
+-void show_response(char *buffer,char *base_buffer,char *end_buffer,FILE* file)
+    -primeste ca parametri adresa de unde incep sectiunile answer,authority si additional in mesaj
+    (unde se termina mesajul trimis): buffer, adresa de unde incepe mesajul: base_buffer, adresa
+    unde se termina mesajul: end_buffer si fisierul in care se afiseaza mesajul (dns.log): file
+    -cat timp nu s-a ajuns la sfarsitul mesajului (buffer!=end_buffer), se afiseaza numele sectiunii
+    in care s-a ajuns stiindu-se de cate inregistrari s-a trecut: variabila i si numarul de inregistrari
+    din sectiunile answer, authority, additional: ancount, nscount, arcount. O iteratie a buclei va
+    trece printr-o inregistrare din aceste sectiuni.
+    -indiferent de tipul mesajului primit se vor afisa campurile din mesaj: nume, clasa si tip, dupa
+    care in functie de tipul mesajului, se vor afisa alte campuri specifice:
+    *)daca tipul este A, se vor mai afisa adresele IP pentru acel nume de domeniu, separate prin ','
+    *)daca tipul este NS, se va afisa campul nameserver, sub forma de nume de domeniu
+    *)daca tipul este CNAME, se va afisa campul PrimaryName sub forma de nume de domeniu 
+    *)daca tipul este SOA, se vor mai afisa campurile : mname,rname,serial,refresh,retry,expiration
+    si minimum, primele doua sub forma de nume de domenii iar celelalt sub forma de intregi pe 4 bytes
+    *)pentru tipul PTR se va afisa o adresa sub forma de nume de domeniu
+    *)pentru tipul MX se va afisa un intreg pe 2 octeti: preference si un nume de domeniu: mailExchange
+    *)daca tipul este TXT se vor afisa siruri de mesaje, separate prin ','
+    -in functie, am folosit pentru afisarea unui nume de domeniu, stocat in buffer sub forma de secventa
+    de label-uri si/sau prin comprimare, functia afi_name
+    -in functie am folosit pentru afisarea tipului functia afi_type si pentru afisarea clasei functia
+    afi_class
+-void afi_name(char **buffer,char* base_buffer,FILE *file)
+    -primeste ca parametri adresa adresei de unde incepe un nume (buffer), adresa de unde incepe mesajul
+    (base_buffer) si fisierul in care se scrie numele (file)
+    -scrie in fisireul file un nume salvat in *buffer sub forma de sir de label-uri si/sau comprimat 
+    ca un nume de domeniu
+    -bucla while(1) se termina cand *buf ajunge in pozitia in care se afla scris domeniul radacina 
+    (*(*buffer)==0)
+    -in timpul unei iteratii se afiseaza un label: se citeste de pe primul byte lungimea: len iar de pe
+    urmatoarele len adrese cate un caracter. La finalul scrierii unui label, se afiseaza caracterul '.'
+    -daca la inceputul unei iteratii, cand trebuie citita lungimea label-ului, se constata ca primii doi
+    biti sunt 1, inseamna ca numele a fost comprimat si se apeleaza functia afi_compressed_name pentru
+    a afisa restul numelui, dupa care se iese din functia afi_name
+    -la iesirea din bucla se sare peste domeniul radacina ,care a fost marcat cu '.' la afisare 
+    ((*buffer)++)
+-void afi_compressed_name(char **buffer,char *base_buffer,FILE *file)
+    -primeste ca parametri adresa adresei de unde incepe un nume (buffer), adresa de unde incepe mesajul
+    (base_buffer) si fisierul in care se scrie numele (file)
+    -afiseaza un nume comprimat ca un nume de domeniu
+    -calculeaza pozitia in cadrul mesajului a numelui spre care indica numele comprimat: valoarea de pe
+    primii doi bytes care urmeaza primilor 2 biti. Numele se va afla la pozitia calculata, incepand cu
+    inceputul mesajului (base_buffer+index). La aceasta pozitie se aplica din nou afi_name pentru a 
+    se afla restul numelui din buffer (afi_name(&aux,base_buffer,file)) 
+In cazul in care tipul interogarii este PTR, se apeleaza functia reverse_name pentru a inversa adresa IP
+si a adauga sirul ".in-addr.arpa" la finalul acesteia:
+-int reverse_name(char *domain_name)
+    -functia primeste ca parametru o adresa ipv4 si intoarce -1 in cazul in adresa ipv4 nu are un 
+    format corespunzator si 0 in caz de succes
+    -functia inverseaza adresa ip din domain_name si ii adauga acesteia sufixul ".in-addr.arpa"
+Functia principala:
+-int main(int argc,char* argv[])
+    -verifica daca programul primeste 2 parametri iar in caz contrar se inchide programul
+    -se asociaza, folosind functia: unsigned short get_type(char* type), tipul primit ca al doilea
+    parametru in linia de comanda cu numarul corespunzator unuia dintre tipurile definite la inceput:
+    A,NS,CNAME,SOA,PTR,MX sau TXT. In cazul in care tipul este invalid, se incheie executia
+    -se initializeaza id-ul mesajului cu 0, urmand ca acesta sa creasca cand se trece la urmatorul 
+    servers din fisierul dns-servers.conf
+    -se salveaza numele de domeniu din primul parametru intr-un buffer (pentru a se putea adauga sufixul
+    necesar in caz de reverse lookup) si in cazul in care tipul de interogare este PTR, se apeleaza
+    reverse_name
+    -se deschid fisierele: dns-servers.conf, message.log si dns.log 
+    -se intra intr-o bucla while(1) care se inchide cand s-a primit un mesaj de la server cu inregistrari
+    din oricare din cele 3 sectiuni:answer, authority si additional. Intr-o iteratie a buclei, se citeste
+    o linie din fisierul dns-servers.conf si daca o linie incepe cu '#', se trece mai departe.
+    -cand s-a citit o adresa ip valida pentru server (in variabila ip_server), se stabileste o conexiune
+    tcp cu serverul pe portul dedicat comunicatiei DNS: 53. In caz de eroare la conectare, se incearca
+    alt server.
+    -daca s-a reusit conexiunea, se creaza header-ul mesajului (make_query(buffer,id)) si sectiunea 
+    question a acestuia (add_question(buffer,domain_name,type)), se adauga dimensiunea la inceputul 
+    mesajului, se trimite mesajul si se primeste raspunsul
+    -verificare daca se obtine eroare de la server prin analizarea campului rcode din mesaj:
+        -rcode=5 =>refuz de la server
+        -rcode=4 =>interogare neimplementata de server
+        -rcode=3 =>eroare de nume
+        -rcode=2 =>eroare de la server
+        -rcode=1 =>eroare de format
+        -rcode=0 =>nicio eroare
+        Se observa ca daca rcode==5 || rcode==4 || rcode==2, eroarea este de la server si are sens trecerea
+        la alt server, deci se trece la iteratia urmatoare, in timp ce rcode==3 || rcode==1, eroarea este
+        de la utilizator si se incheie executia programului
+    -se scrie mesajul trimis in message.log (write_message), se scrie raspunsul in fisierul dns.log, apeland
+    functia show_response si se iese din bucla
